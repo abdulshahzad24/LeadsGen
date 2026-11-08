@@ -44,7 +44,7 @@ class SearchLeadsRequest(BaseModel):
     niche: str = "clinic"
     city: str = "Mumbai"
     count: int = 5
-    use_live_map: bool = True
+    use_live_map: bool = False
 
 class SimulateCallRequest(BaseModel):
     user_message: str

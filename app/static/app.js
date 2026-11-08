@@ -5,20 +5,18 @@ let chatHistory = [];
 let ttsEnabled = true;
 
 // DOM Elements
-const statsRow = document.getElementById('statsRow');
 const statTotalLeads = document.getElementById('statTotalLeads');
-const statHighVuln = document.getElementById('statHighVuln');
 const statMissedCalls = document.getElementById('statMissedCalls');
 const statRevenueLoss = document.getElementById('statRevenueLoss');
-const statRevenueLossUsd = document.getElementById('statRevenueLossUsd');
-const statVulnRate = document.getElementById('statVulnRate');
 
 const leadsTableBody = document.getElementById('leadsTableBody');
 const searchInput = document.getElementById('searchInput');
 const filterNiche = document.getElementById('filterNiche');
 const filterStatus = document.getElementById('filterStatus');
-const filterVuln = document.getElementById('filterVuln');
-const filterVerified = document.getElementById('filterVerified');
+
+const scannerModal = document.getElementById('scannerModal');
+const openScannerBtn = document.getElementById('openScannerBtn');
+const closeScannerModalBtn = document.getElementById('closeScannerModalBtn');
 
 const prospectorForm = document.getElementById('prospectorForm');
 const targetNiche = document.getElementById('targetNiche');
@@ -28,7 +26,6 @@ const discoverBtn = document.getElementById('discoverBtn');
 
 const drawerOverlay = document.getElementById('drawerOverlay');
 const closeDrawerBtn = document.getElementById('closeDrawerBtn');
-const seedDataBtn = document.getElementById('seedDataBtn');
 const exportCsvBtn = document.getElementById('exportCsvBtn');
 
 const toast = document.getElementById('toast');
@@ -37,12 +34,13 @@ const toastMessage = document.getElementById('toastMessage');
 // Init
 document.addEventListener('DOMContentLoaded', async () => {
   if (window.lucide) lucide.createIcons();
+  setupEventListeners();
   await loadStats();
   await loadLeads();
-  setupEventListeners();
 });
 
 function showToast(msg) {
+  if (!toast || !toastMessage) return;
   toastMessage.textContent = msg;
   toast.classList.remove('hidden');
   setTimeout(() => {
@@ -51,145 +49,96 @@ function showToast(msg) {
 }
 
 function setupEventListeners() {
-  // Scanner Modal Toggle
-  const scannerModal = document.getElementById('scannerModal');
-  const openScannerBtn = document.getElementById('openScannerBtn');
-  const closeScannerModalBtn = document.getElementById('closeScannerModalBtn');
+  // Scanner Modal Open/Close
   if (openScannerBtn && scannerModal) {
-    openScannerBtn.addEventListener('click', () => scannerModal.classList.remove('hidden'));
-    closeScannerModalBtn.addEventListener('click', () => scannerModal.classList.add('hidden'));
+    openScannerBtn.addEventListener('click', () => {
+      scannerModal.classList.remove('hidden');
+    });
+  }
+  if (closeScannerModalBtn && scannerModal) {
+    closeScannerModalBtn.addEventListener('click', () => {
+      scannerModal.classList.add('hidden');
+    });
+  }
+  if (scannerModal) {
     scannerModal.addEventListener('click', (e) => {
       if (e.target === scannerModal) scannerModal.classList.add('hidden');
     });
   }
 
   // Filters & Search
-  searchInput.addEventListener('input', debounce(loadLeads, 300));
-  filterNiche.addEventListener('change', loadLeads);
-  filterStatus.addEventListener('change', loadLeads);
-  filterVuln.addEventListener('change', loadLeads);
-  if (filterVerified) filterVerified.addEventListener('change', loadLeads);
+  if (searchInput) {
+    searchInput.addEventListener('input', debounce(loadLeads, 250));
+  }
+  if (filterNiche) {
+    filterNiche.addEventListener('change', loadLeads);
+  }
+  if (filterStatus) {
+    filterStatus.addEventListener('change', loadLeads);
+  }
 
-  // Prospector Discover
-  prospectorForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const niche = targetNiche.value;
-    const city = targetCity.value;
-    const count = parseInt(targetCount.value, 10);
+  // Prospector Discover Form
+  if (prospectorForm) {
+    prospectorForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const niche = targetNiche ? targetNiche.value : 'clinic';
+      const city = targetCity ? targetCity.value : 'Mumbai';
+      const count = targetCount ? parseInt(targetCount.value, 10) : 5;
 
-    discoverBtn.disabled = true;
-    discoverBtn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></span> Discovering...`;
+      if (discoverBtn) {
+        discoverBtn.disabled = true;
+        discoverBtn.innerHTML = `<span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full mr-1.5"></span> Finding Leads...`;
+      }
 
-    try {
-      const res = await fetch('/api/leads/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ niche, city, count, use_live_map: true })
-      });
-      const data = await res.json();
-      showToast(`Discovered & audited ${data.count} new leads in ${city}!`);
-      if (scannerModal) scannerModal.classList.add('hidden');
-      await loadStats();
-      await loadLeads();
-    } catch (err) {
-      console.error(err);
-      showToast('Error discovering leads.');
-    } finally {
-      discoverBtn.disabled = false;
-      discoverBtn.innerHTML = `<i data-lucide="search" class="w-4 h-4"></i><span>Discover & Audit Leads</span>`;
-      if (window.lucide) lucide.createIcons();
-    }
-  });
-
-  // Seed Button
-  seedDataBtn.addEventListener('click', async () => {
-    seedDataBtn.disabled = true;
-    seedDataBtn.innerText = 'Seeding...';
-    try {
-      const res = await fetch('/api/leads/seed', { method: 'POST' });
-      const data = await res.json();
-      showToast(data.message || 'Leads seeded successfully!');
-      await loadStats();
-      await loadLeads();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      seedDataBtn.disabled = false;
-      seedDataBtn.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i> Seed Demo Leads`;
-      if (window.lucide) lucide.createIcons();
-    }
-  });
+      try {
+        const res = await fetch('/api/leads/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ niche, city, count, use_live_map: false })
+        });
+        const data = await res.json();
+        const found = data.count || (data.leads ? data.leads.length : 0);
+        showToast(`Discovered & audited ${found} new leads in ${city}!`);
+        
+        if (scannerModal) {
+          scannerModal.classList.add('hidden');
+        }
+        await loadStats();
+        await loadLeads();
+      } catch (err) {
+        console.error('Error discovering leads:', err);
+        showToast('Error finding leads.');
+      } finally {
+        if (discoverBtn) {
+          discoverBtn.disabled = false;
+          discoverBtn.innerHTML = `<i data-lucide="search" class="w-3.5 h-3.5"></i><span>Scan & Audit Leads</span>`;
+          if (window.lucide) lucide.createIcons();
+        }
+      }
+    });
+  }
 
   // Export CSV
-  exportCsvBtn.addEventListener('click', () => {
-    window.location.href = '/api/leads/export/csv';
-  });
-
-  // Copy Drawer Email
-  document.getElementById('copyDrawerEmailBtn').addEventListener('click', () => {
-    const text = document.getElementById('drawerEmail').innerText;
-    if (text && text !== 'Scanning...') {
-      navigator.clipboard.writeText(text);
-      showToast('Email address copied!');
-    }
-  });
-
-  // Scan Email Button
-  const scanEmailBtn = document.getElementById('scanEmailBtn');
-  scanEmailBtn.addEventListener('click', async () => {
-    if (!currentLead) return;
-    scanEmailBtn.disabled = true;
-    scanEmailBtn.innerHTML = `<span class="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full mr-1"></span> Scanning...`;
-
-    try {
-      const res = await fetch(`/api/leads/${currentLead.id}/discover-email`, { method: 'POST' });
-      const data = await res.json();
-      
-      if (data.primary_email) {
-        document.getElementById('drawerEmail').innerText = data.primary_email;
-        showToast(`Discovered verified email: ${data.primary_email}`);
-      }
-
-      const listDiv = document.getElementById('drawerEmailCandidateList');
-      if (data.all_emails && data.all_emails.length > 0) {
-        listDiv.classList.remove('hidden');
-        listDiv.innerHTML = `
-          <div class="text-slate-400 font-semibold mb-1 flex items-center justify-between">
-            <span>Discovered Inboxes (${escapeHtml(data.source || 'Scanned')}):</span>
-          </div>
-          <div class="space-y-1">
-            ${data.all_emails.map(item => `
-              <div class="flex items-center justify-between p-1.5 rounded bg-slate-900 border border-slate-800">
-                <span class="font-mono text-cyan-300">${escapeHtml(item.email)}</span>
-                <span class="text-slate-400 text-[10px] bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">${escapeHtml(item.type || 'Inbox')} (${escapeHtml(item.confidence || '90%')})</span>
-              </div>
-            `).join('')}
-          </div>
-        `;
-      }
-      await loadLeads();
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to scan website for emails.');
-    } finally {
-      scanEmailBtn.disabled = false;
-      scanEmailBtn.innerHTML = `<i data-lucide="scan" class="w-3 h-3"></i><span>Scan Website for Emails</span>`;
-      if (window.lucide) lucide.createIcons();
-    }
-  });
+  if (exportCsvBtn) {
+    exportCsvBtn.addEventListener('click', () => {
+      window.location.href = '/api/leads/export/csv';
+    });
+  }
 
   // Drawer Close
-  closeDrawerBtn.addEventListener('click', closeDrawer);
-  drawerOverlay.addEventListener('click', (e) => {
-    if (e.target === drawerOverlay) closeDrawer();
-  });
+  if (closeDrawerBtn) {
+    closeDrawerBtn.addEventListener('click', closeDrawer);
+  }
+  if (drawerOverlay) {
+    drawerOverlay.addEventListener('click', (e) => {
+      if (e.target === drawerOverlay) closeDrawer();
+    });
+  }
 
   // Drawer Tabs
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => {
-        b.classList.remove('active');
-      });
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
 
       const targetTab = btn.getAttribute('data-tab');
@@ -204,68 +153,50 @@ function setupEventListeners() {
   });
 
   // Copy WhatsApp
-  document.getElementById('copyWhatsAppBtn').addEventListener('click', () => {
-    const text = document.getElementById('whatsappText').innerText;
-    navigator.clipboard.writeText(text);
-    showToast('WhatsApp outreach pitch copied!');
-  });
+  const copyWhatsAppBtn = document.getElementById('copyWhatsAppBtn');
+  if (copyWhatsAppBtn) {
+    copyWhatsAppBtn.addEventListener('click', () => {
+      const waText = document.getElementById('whatsappText');
+      if (waText) {
+        navigator.clipboard.writeText(waText.innerText);
+        showToast('WhatsApp hook copied!');
+      }
+    });
+  }
 
-  // Simulator Input
+  // Simulator Input Form
   const simForm = document.getElementById('simulatorInputForm');
-  simForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const input = document.getElementById('simInputText');
-    const msg = input.value.trim();
-    if (!msg || !currentLead) return;
-    input.value = '';
-    await sendSimulatorMessage(msg);
-  });
+  if (simForm) {
+    simForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('simInputText');
+      if (!input) return;
+      const msg = input.value.trim();
+      if (!msg || !currentLead) return;
+      input.value = '';
+      await sendSimulatorMessage(msg);
+    });
+  }
 
-  // Simulator suggestion pills
+  // Simulator quick suggestion pills
   document.querySelectorAll('.sim-suggest-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const text = btn.innerText.replace(/"/g, '').trim();
-      document.getElementById('simInputText').value = text;
+      const input = document.getElementById('simInputText');
+      if (input) input.value = text;
       sendSimulatorMessage(text);
     });
   });
 
-  // Simulator audio toggle
+  // Simulator Audio Toggle
   const toggleTtsBtn = document.getElementById('toggleTtsBtn');
-  toggleTtsBtn.addEventListener('click', () => {
-    ttsEnabled = !ttsEnabled;
-    document.getElementById('ttsStatusLabel').innerText = ttsEnabled ? 'Audio: Enabled' : 'Audio: Muted';
-    showToast(ttsEnabled ? 'AI Voice spoken audio enabled' : 'AI Voice audio muted');
-  });
-
-  // Mic input
-  const simMicBtn = document.getElementById('simMicBtn');
-  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-
-    simMicBtn.addEventListener('click', () => {
-      simMicBtn.classList.add('bg-red-600', 'text-white');
-      recognition.start();
+  if (toggleTtsBtn) {
+    toggleTtsBtn.addEventListener('click', () => {
+      ttsEnabled = !ttsEnabled;
+      const label = document.getElementById('ttsStatusLabel');
+      if (label) label.innerText = ttsEnabled ? 'Audio: On' : 'Audio: Muted';
+      showToast(ttsEnabled ? 'Spoken audio enabled' : 'Audio muted');
     });
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      document.getElementById('simInputText').value = transcript;
-      simMicBtn.classList.remove('bg-red-600', 'text-white');
-      sendSimulatorMessage(transcript);
-    };
-
-    recognition.onerror = () => {
-      simMicBtn.classList.remove('bg-red-600', 'text-white');
-    };
-    recognition.onend = () => {
-      simMicBtn.classList.remove('bg-red-600', 'text-white');
-    };
-  } else {
-    simMicBtn.style.display = 'none';
   }
 }
 
@@ -273,16 +204,9 @@ async function loadStats() {
   try {
     const res = await fetch('/api/stats');
     const data = await res.json();
-    statTotalLeads.innerText = data.total_leads || 0;
-    statHighVuln.innerText = data.high_vulnerability_leads || 0;
-    statMissedCalls.innerText = (data.total_missed_calls_monthly || 0).toLocaleString();
-    statRevenueLoss.innerText = '₹' + (data.total_estimated_revenue_loss_inr || 0).toLocaleString();
-    statRevenueLossUsd.innerText = '$' + (data.total_estimated_revenue_loss_usd || 0).toLocaleString();
-    
-    const vulnRate = data.total_leads > 0 
-      ? Math.round((data.high_vulnerability_leads / data.total_leads) * 100) 
-      : 0;
-    statVulnRate.innerText = vulnRate + '%';
+    if (statTotalLeads) statTotalLeads.innerText = data.total_leads || 0;
+    if (statMissedCalls) statMissedCalls.innerText = (data.total_missed_calls_monthly || 0).toLocaleString();
+    if (statRevenueLoss) statRevenueLoss.innerText = '₹' + (data.total_estimated_revenue_loss_inr || 0).toLocaleString();
   } catch (err) {
     console.error('Failed to load stats:', err);
   }
@@ -291,20 +215,13 @@ async function loadStats() {
 async function loadLeads() {
   try {
     const params = new URLSearchParams();
-    if (filterNiche.value) params.append('niche', filterNiche.value);
-    if (filterStatus.value) params.append('status', filterStatus.value);
-    if (filterVuln.value) params.append('min_vulnerability', filterVuln.value);
-    if (searchInput.value) params.append('search', searchInput.value.trim());
+    if (filterNiche && filterNiche.value) params.append('niche', filterNiche.value);
+    if (filterStatus && filterStatus.value) params.append('status', filterStatus.value);
+    if (searchInput && searchInput.value.trim()) params.append('search', searchInput.value.trim());
 
     const res = await fetch(`/api/leads?${params.toString()}`);
     const data = await res.json();
-    let leads = data.leads || [];
-    
-    if (filterVerified && filterVerified.value === 'verified') {
-      leads = leads.filter(l => (l.verification_score || 0) >= 75);
-    }
-    
-    allLeads = leads;
+    allLeads = data.leads || [];
     renderLeadsTable(allLeads);
   } catch (err) {
     console.error('Failed to load leads:', err);
@@ -312,13 +229,15 @@ async function loadLeads() {
 }
 
 function renderLeadsTable(leads) {
+  if (!leadsTableBody) return;
+
   if (!leads || leads.length === 0) {
     leadsTableBody.innerHTML = `
       <tr>
-        <td colspan="7" class="px-5 py-12 text-center text-slate-500">
+        <td colspan="6" class="px-5 py-12 text-center text-[#52545a]">
           <div class="flex flex-col items-center justify-center gap-2">
-            <i data-lucide="inbox" class="w-8 h-8 text-slate-600"></i>
-            <span>No leads found matching your filters. Click "Discover & Audit Leads" above to populate!</span>
+            <i data-lucide="inbox" class="w-6 h-6 text-[#52545a]"></i>
+            <span>No leads found matching your search. Click "Find Leads" above to scan practices!</span>
           </div>
         </td>
       </tr>
@@ -327,17 +246,16 @@ function renderLeadsTable(leads) {
     return;
   }
 
-  leadsTableBody.innerHTML = leads.map(l => {
-    // Niche formatting
-    const nicheIcons = {
-      clinic: '🩺 Clinic',
-      ca: '📊 CA / Tax',
-      diagnostic: '🧪 Diagnostic',
-      real_estate: '🏢 Real Estate',
-      visa_consultant: '✈️ Visa Agency'
-    };
-    const nicheLabel = nicheIcons[l.niche] || l.niche;
+  const nicheIcons = {
+    clinic: '🩺 Clinic',
+    ca: '📊 CA / Tax',
+    diagnostic: '🧪 Diagnostic',
+    real_estate: '🏢 Real Estate',
+    visa_consultant: '✈️ Visa Agency'
+  };
 
+  leadsTableBody.innerHTML = leads.map(l => {
+    const nicheLabel = nicheIcons[l.niche] || l.niche;
     const revLossInr = (l.est_monthly_revenue_loss_inr || 0).toLocaleString();
     const missedCalls = (l.est_monthly_missed_calls || 0).toLocaleString();
     const dailyCalls = Math.round((l.est_monthly_missed_calls || 0) / 26);
@@ -353,7 +271,7 @@ function renderLeadsTable(leads) {
             </span>
           </div>
           <div class="text-xs text-[#8c8f96] mt-0.5 flex items-center gap-1.5">
-            <span>${escapeHtml(l.contact_person || 'Lead Contact')}</span>
+            <span>${escapeHtml(l.contact_person || 'Practice Head')}</span>
             <span>&bull;</span>
             <span>📍 ${escapeHtml(l.city)}</span>
           </div>
@@ -424,83 +342,56 @@ async function openLeadDrawer(leadId) {
     currentLead = lead;
 
     // Header info
-    document.getElementById('drawerNicheBadge').innerText = lead.niche.toUpperCase();
-    document.getElementById('drawerCityBadge').innerText = lead.city;
-    document.getElementById('drawerBusinessName').innerText = lead.business_name;
-    document.getElementById('drawerContactPerson').innerText = lead.contact_person || 'Practice Head';
-
-    // Audit summary
-    document.getElementById('drawerVulnScore').innerText = `${lead.vulnerability_score}/100`;
-    document.getElementById('drawerMissedCalls').innerText = lead.est_monthly_missed_calls.toLocaleString();
-    document.getElementById('drawerRevLoss').innerText = '₹' + (lead.est_monthly_revenue_loss_inr || 0).toLocaleString();
-    document.getElementById('drawerPhone').innerText = lead.phone || 'Not listed';
-    document.getElementById('drawerAddress').innerText = lead.address || lead.city;
-    document.getElementById('drawerRating').innerText = `${lead.rating}★ (${lead.review_count} reviews)`;
-
-    // Email & Contact
-    document.getElementById('drawerEmail').innerText = lead.email || 'None discovered';
-    const emailCandList = document.getElementById('drawerEmailCandidateList');
-    emailCandList.classList.add('hidden');
-    emailCandList.innerHTML = '';
-
-    // Data Verification Checklist
-    const badges = lead.verification_badges || {};
-    const trustScore = lead.verification_score || 95;
-    document.getElementById('drawerTrustBadge').innerText = `${trustScore}% Verified`;
+    const nicheBadge = document.getElementById('drawerNicheBadge');
+    if (nicheBadge) nicheBadge.innerText = (lead.niche || 'CLINIC').toUpperCase();
     
-    const vList = document.getElementById('drawerVerificationList');
-    vList.innerHTML = `
-      <div class="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
-        <span class="text-slate-400">📱 Phone Line:</span>
-        <span class="font-medium text-emerald-400">${escapeHtml(badges.phone?.label || 'Verified Line')}</span>
-      </div>
-      <div class="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
-        <span class="text-slate-400">✉️ Email Inbox:</span>
-        <span class="font-medium text-emerald-400">${escapeHtml(badges.email?.label || 'Syntax & Domain Valid')}</span>
-      </div>
-      <div class="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
-        <span class="text-slate-400">📍 Physical Practice:</span>
-        <span class="font-medium text-emerald-400">${escapeHtml(badges.location?.label || 'Verified Location')}</span>
-      </div>
-      <div class="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
-        <span class="text-slate-400">⭐ Google Reviews:</span>
-        <span class="font-medium text-emerald-400">${escapeHtml(badges.reputation?.label || 'Google Places Audited')}</span>
-      </div>
-    `;
+    const cityBadge = document.getElementById('drawerCityBadge');
+    if (cityBadge) cityBadge.innerText = lead.city || '';
+
+    const trustBadge = document.getElementById('drawerTrustBadge');
+    if (trustBadge) trustBadge.innerText = `${lead.verification_score || 95}% Verified`;
+
+    const busName = document.getElementById('drawerBusinessName');
+    if (busName) busName.innerText = lead.business_name || '';
+
+    const contactName = document.getElementById('drawerContactPerson');
+    if (contactName) contactName.innerText = lead.contact_person || 'Practice Head';
+
+    // Metric Summary
+    const missedElem = document.getElementById('drawerMissedCalls');
+    if (missedElem) missedElem.innerText = Math.round((lead.est_monthly_missed_calls || 0) / 26);
+
+    const revElem = document.getElementById('drawerRevLoss');
+    if (revElem) revElem.innerText = '₹' + (lead.est_monthly_revenue_loss_inr || 0).toLocaleString();
+
+    const phoneElem = document.getElementById('drawerPhone');
+    if (phoneElem) phoneElem.innerText = `${lead.phone || 'No phone'} • ${lead.email || ''}`;
 
     // Pitches
     const pitches = lead.pitches || {};
-    document.getElementById('whatsappText').innerText = pitches.whatsapp_pitch || 'Generating...';
+    const waText = document.getElementById('whatsappText');
+    if (waText) waText.innerText = pitches.whatsapp_pitch || '';
 
-    // WhatsApp Direct URL
+    // WhatsApp Direct link
     const cleanPhone = (lead.phone || '').replace(/[^0-9]/g, '');
     const encodedMsg = encodeURIComponent(pitches.whatsapp_pitch || '');
-    const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodedMsg}` : `https://web.whatsapp.com/send?text=${encodedMsg}`;
-    document.getElementById('openWhatsAppBtn').setAttribute('href', waUrl);
+    const waUrl = cleanPhone 
+      ? `https://wa.me/${cleanPhone}?text=${encodedMsg}` 
+      : `https://web.whatsapp.com/send?text=${encodedMsg}`;
+    const openWaBtn = document.getElementById('openWhatsAppBtn');
+    if (openWaBtn) openWaBtn.setAttribute('href', waUrl);
 
-    // Emails
+    // Email
     const e1 = pitches.cold_email_step1 || {};
-    document.getElementById('emailStep1Subject').innerText = 'Subject: ' + (e1.subject || '');
-    document.getElementById('emailStep1Text').innerText = e1.body || '';
+    const emailSubj = document.getElementById('emailStep1Subject');
+    if (emailSubj) emailSubj.innerText = 'Subject: ' + (e1.subject || '');
+    const emailBody = document.getElementById('emailStep1Text');
+    if (emailBody) emailBody.innerText = e1.body || '';
 
-    const e2 = pitches.cold_email_step2 || {};
-    document.getElementById('emailStep2Subject').innerText = 'Subject: ' + (e2.subject || '');
-    document.getElementById('emailStep2Text').innerText = e2.body || '';
-
-    const e3 = pitches.cold_email_step3 || {};
-    document.getElementById('emailStep3Subject').innerText = 'Subject: ' + (e3.subject || '');
-    document.getElementById('emailStep3Text').innerText = e3.body || '';
-
-    // SDR Phone Script
-    document.getElementById('coldCallScriptText').innerText = pitches.cold_call_script || '';
-
-    // Voice Agent System Prompt
-    document.getElementById('voiceAgentPromptText').innerText = pitches.voice_agent_prompt || '';
-
-    // Reset and initialize simulator
+    // Init simulator
     initSimulatorForLead(lead);
 
-    drawerOverlay.classList.remove('hidden');
+    if (drawerOverlay) drawerOverlay.classList.remove('hidden');
     if (window.lucide) lucide.createIcons();
   } catch (err) {
     console.error('Failed to load lead details:', err);
@@ -508,7 +399,7 @@ async function openLeadDrawer(leadId) {
 }
 
 function closeDrawer() {
-  drawerOverlay.classList.add('hidden');
+  if (drawerOverlay) drawerOverlay.classList.add('hidden');
   currentLead = null;
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
@@ -518,14 +409,16 @@ function closeDrawer() {
 function initSimulatorForLead(lead) {
   chatHistory = [];
   const chatBox = document.getElementById('simulatorChatBox');
+  if (!chatBox) return;
+
   chatBox.innerHTML = `
-    <div class="p-3 rounded-xl bg-[#16181b] border border-white/[0.06] flex items-start gap-2.5">
-      <div class="w-6 h-6 rounded-full bg-[#d4ff3f]/20 text-[#d4ff3f] flex items-center justify-center font-bold text-xs flex-shrink-0">
+    <div class="p-2.5 rounded-xl bg-[#16181b] border border-white/[0.06] flex items-start gap-2">
+      <div class="w-5 h-5 rounded-full bg-[#d4ff3f]/20 text-[#d4ff3f] flex items-center justify-center font-bold text-[10px] flex-shrink-0">
         AI
       </div>
       <div>
-        <div class="font-semibold text-white tracking-tight">${escapeHtml(lead.business_name)} &bull; 24/7 Voice AI</div>
-        <div class="text-[#ededed] mt-1 text-xs">
+        <div class="font-semibold text-white tracking-tight text-xs">${escapeHtml(lead.business_name)} &bull; 24/7 Voice AI</div>
+        <div class="text-[#ededed] mt-0.5 text-xs">
           "Hello, thank you for calling ${escapeHtml(lead.business_name)}. My name is Maya, your digital assistant. How may I assist your appointment or inquiry today?"
         </div>
       </div>
@@ -535,24 +428,23 @@ function initSimulatorForLead(lead) {
 
 async function sendSimulatorMessage(userMsg) {
   const chatBox = document.getElementById('simulatorChatBox');
+  if (!chatBox) return;
 
-  // Append user bubble
   chatBox.innerHTML += `
-    <div class="p-3 rounded-xl bg-[#1f2229] border border-white/10 flex items-start justify-end gap-2.5">
+    <div class="p-2.5 rounded-xl bg-[#1f2229] border border-white/10 flex items-start justify-end gap-2">
       <div class="text-right">
-        <div class="font-medium text-[#8c8f96] text-[11px]">Caller (You)</div>
-        <div class="text-[#ededed] mt-0.5">${escapeHtml(userMsg)}</div>
+        <div class="font-medium text-[#8c8f96] text-[10px]">Caller (You)</div>
+        <div class="text-[#ededed] mt-0.5 text-xs">${escapeHtml(userMsg)}</div>
       </div>
     </div>
   `;
   chatBox.scrollTop = chatBox.scrollHeight;
 
-  // Add temporary typing indicator
   const typingId = 'typing-' + Date.now();
   chatBox.innerHTML += `
-    <div id="${typingId}" class="p-2.5 text-[#8c8f96] flex items-center gap-2 italic text-xs">
+    <div id="${typingId}" class="p-2 text-[#8c8f96] flex items-center gap-1.5 italic text-[11px]">
       <span class="animate-bounce text-[#d4ff3f]">●</span><span class="animate-bounce delay-100 text-[#d4ff3f]">●</span><span class="animate-bounce delay-200 text-[#d4ff3f]">●</span>
-      <span>AI Receptionist is synthesizing response...</span>
+      <span>AI Receptionist is replying...</span>
     </div>
   `;
   chatBox.scrollTop = chatBox.scrollHeight;
@@ -569,38 +461,29 @@ async function sendSimulatorMessage(userMsg) {
     const data = await res.json();
     const reply = data.agent_reply || "Thank you for calling. I have recorded your appointment request.";
 
-    // Remove typing
     const typingElem = document.getElementById(typingId);
     if (typingElem) typingElem.remove();
 
-    // Append agent bubble
     chatBox.innerHTML += `
-      <div class="p-3 rounded-xl bg-[#16181b] border border-white/[0.06] flex items-start gap-2.5">
-        <div class="w-6 h-6 rounded-full bg-[#d4ff3f]/20 text-[#d4ff3f] flex items-center justify-center font-bold text-xs flex-shrink-0">
+      <div class="p-2.5 rounded-xl bg-[#16181b] border border-white/[0.06] flex items-start gap-2">
+        <div class="w-5 h-5 rounded-full bg-[#d4ff3f]/20 text-[#d4ff3f] flex items-center justify-center font-bold text-[10px] flex-shrink-0">
           AI
         </div>
         <div>
-          <div class="font-medium text-[#8c8f96] text-[11px]">AI Receptionist</div>
-          <div class="text-[#ededed] mt-0.5">${escapeHtml(reply)}</div>
+          <div class="font-medium text-[#8c8f96] text-[10px]">AI Receptionist</div>
+          <div class="text-[#ededed] mt-0.5 text-xs">${escapeHtml(reply)}</div>
         </div>
       </div>
     `;
     chatBox.scrollTop = chatBox.scrollHeight;
 
-    // Update history
     chatHistory.push({ role: 'user', text: userMsg });
     chatHistory.push({ role: 'model', text: reply });
 
-    // Speak reply if audio enabled
     if (ttsEnabled && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(reply);
       utterance.rate = 1.05;
-      utterance.pitch = 1.0;
-      // Prefer female English voice
-      const voices = window.speechSynthesis.getVoices();
-      const preferred = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Female') || v.name.includes('Samantha') || v.name.includes('Natural') || v.name.includes('Google')));
-      if (preferred) utterance.voice = preferred;
       window.speechSynthesis.speak(utterance);
     }
   } catch (err) {
