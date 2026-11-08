@@ -9,3 +9,4 @@ venv/
 ENV/
 .DS_Store
 *.log
+.vercel
