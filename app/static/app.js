@@ -51,6 +51,18 @@ function showToast(msg) {
 }
 
 function setupEventListeners() {
+  // Scanner Modal Toggle
+  const scannerModal = document.getElementById('scannerModal');
+  const openScannerBtn = document.getElementById('openScannerBtn');
+  const closeScannerModalBtn = document.getElementById('closeScannerModalBtn');
+  if (openScannerBtn && scannerModal) {
+    openScannerBtn.addEventListener('click', () => scannerModal.classList.remove('hidden'));
+    closeScannerModalBtn.addEventListener('click', () => scannerModal.classList.add('hidden'));
+    scannerModal.addEventListener('click', (e) => {
+      if (e.target === scannerModal) scannerModal.classList.add('hidden');
+    });
+  }
+
   // Filters & Search
   searchInput.addEventListener('input', debounce(loadLeads, 300));
   filterNiche.addEventListener('change', loadLeads);
@@ -76,6 +88,7 @@ function setupEventListeners() {
       });
       const data = await res.json();
       showToast(`Discovered & audited ${data.count} new leads in ${city}!`);
+      if (scannerModal) scannerModal.classList.add('hidden');
       await loadStats();
       await loadLeads();
     } catch (err) {
@@ -315,12 +328,6 @@ function renderLeadsTable(leads) {
   }
 
   leadsTableBody.innerHTML = leads.map(l => {
-    // Vulnerability badge color
-    const score = l.vulnerability_score || 50;
-    let badgeClass = 'bg-[#16181b] text-[#d4ff3f] border-white/10';
-    if (score >= 75) badgeClass = 'bg-[#ff5722]/10 text-[#ff5722] border-[#ff5722]/30';
-    else if (score >= 55) badgeClass = 'bg-[#1c1e22] text-amber-300 border-white/10';
-
     // Niche formatting
     const nicheIcons = {
       clinic: '🩺 Clinic',
@@ -333,70 +340,59 @@ function renderLeadsTable(leads) {
 
     const revLossInr = (l.est_monthly_revenue_loss_inr || 0).toLocaleString();
     const missedCalls = (l.est_monthly_missed_calls || 0).toLocaleString();
-    const trustScore = l.verification_score || 95;
+    const dailyCalls = Math.round((l.est_monthly_missed_calls || 0) / 26);
 
     return `
       <tr class="hover:bg-white/[0.02] transition-colors">
-        <td class="px-5 py-4">
+        <!-- Practice & Decision Maker -->
+        <td class="px-5 py-3.5">
           <div class="flex items-center gap-2">
-            <div class="font-semibold text-white tracking-tight">${escapeHtml(l.business_name)}</div>
-            <span class="text-[10px] font-mono-numbers font-medium px-2 py-0.5 rounded-full bg-[#16181b] text-[#d4ff3f] border border-white/10 flex items-center gap-1">
-              <span>+${trustScore}% VERIFIED</span>
+            <span class="font-semibold text-white tracking-tight">${escapeHtml(l.business_name)}</span>
+            <span class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#181b20] text-[#ededed] border border-white/10">
+              ${nicheLabel}
             </span>
           </div>
-          <div class="text-xs text-[#8c8f96] mt-0.5">${escapeHtml(l.contact_person || 'Lead Contact')}</div>
-          <div class="text-[11px] font-mono text-[#52545a] flex items-center gap-1 mt-0.5">
-            <span>✉️ ${escapeHtml(l.email || 'Click to scan')}</span>
-          </div>
-          <div class="text-[11px] text-[#52545a] flex items-center gap-1.5 mt-0.5 font-mono-numbers">
-            <span>📍 ${escapeHtml(l.city)}</span>
+          <div class="text-xs text-[#8c8f96] mt-0.5 flex items-center gap-1.5">
+            <span>${escapeHtml(l.contact_person || 'Lead Contact')}</span>
             <span>&bull;</span>
-            <span>⭐ ${l.rating} (${l.review_count} reviews)</span>
+            <span>📍 ${escapeHtml(l.city)}</span>
           </div>
         </td>
-        <td class="px-5 py-4">
-          <span class="inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-[#16181b] text-[#ededed] border border-white/10">
-            ${nicheLabel}
-          </span>
-          <div class="text-[11px] text-[#8c8f96] mt-1 max-w-xs truncate" title="${escapeHtml(l.specialty || '')}">
-            ${escapeHtml(l.specialty || '')}
-          </div>
+
+        <!-- Verified Contact -->
+        <td class="px-5 py-3.5 font-mono text-[11px]">
+          <div class="text-[#ededed]">${escapeHtml(l.phone || 'Phone unlisted')}</div>
+          <div class="text-[#8c8f96] text-[10px] mt-0.5">${escapeHtml(l.email || 'Email unlisted')}</div>
         </td>
-        <td class="px-5 py-4">
-          <div class="flex items-center gap-2">
-            <span class="text-xs font-mono-numbers font-semibold px-2.5 py-0.5 rounded-full border ${badgeClass}">
-              ${score}/100
-            </span>
-          </div>
-          <div class="text-[11px] text-[#8c8f96] mt-1">
-            ${score >= 75 ? 'Severe phone bottleneck' : 'Moderate inquiry leakage'}
-          </div>
+
+        <!-- Missed Inbound Calls -->
+        <td class="px-5 py-3.5 font-mono-numbers">
+          <div class="font-semibold text-[#ff5722]">~${dailyCalls} calls/day</div>
+          <div class="text-[10px] text-[#8c8f96]">~${missedCalls}/mo after-hours</div>
         </td>
-        <td class="px-5 py-4 font-mono-numbers">
-          <div class="font-semibold text-[#ff5722]">~${missedCalls} calls/mo</div>
-          <div class="text-[11px] text-[#52545a]">rush & after-hours</div>
-        </td>
-        <td class="px-5 py-4 font-mono-numbers">
+
+        <!-- Revenue Loss -->
+        <td class="px-5 py-3.5 font-mono-numbers">
           <div class="font-bold text-[#d4ff3f]">₹${revLossInr}</div>
-          <div class="text-[11px] text-[#52545a]">~$${(l.est_monthly_revenue_loss_usd || 0).toLocaleString()}/mo</div>
+          <div class="text-[10px] text-[#8c8f96]">~$${(l.est_monthly_revenue_loss_usd || 0).toLocaleString()}/mo</div>
         </td>
-        <td class="px-5 py-4">
-          <select onchange="updateLeadStatus('${l.id}', this.value)" class="bg-[#121417] border border-white/10 text-xs text-[#ededed] rounded-lg px-2.5 py-1 focus:outline-none focus:border-white/20 font-mono-numbers">
+
+        <!-- Stage -->
+        <td class="px-5 py-3.5">
+          <select onchange="updateLeadStatus('${l.id}', this.value)" class="bg-[#181b20] border border-white/10 text-xs text-[#ededed] rounded-lg px-2 py-1 focus:outline-none">
             <option value="new" ${l.status === 'new' ? 'selected' : ''}>New</option>
             <option value="qualified" ${l.status === 'qualified' ? 'selected' : ''}>Qualified</option>
             <option value="outreach_sent" ${l.status === 'outreach_sent' ? 'selected' : ''}>Outreach Sent</option>
             <option value="demo_shared" ${l.status === 'demo_shared' ? 'selected' : ''}>Demo Shared</option>
             <option value="meeting_booked" ${l.status === 'meeting_booked' ? 'selected' : ''}>Meeting Booked</option>
-            <option value="won" ${l.status === 'won' ? 'selected' : ''}>Won (Client)</option>
           </select>
         </td>
-        <td class="px-5 py-4 text-right">
-          <div class="flex items-center justify-end gap-1.5">
-            <button onclick="openLeadDrawer('${l.id}')" class="text-xs bg-[#16181b] hover:bg-white text-white hover:text-black font-semibold px-3 py-1.5 rounded-lg border border-white/10 transition-all flex items-center gap-1.5 shadow-sm">
-              <span>Pitch & Demo</span>
-              <span class="text-[10px]">↗</span>
-            </button>
-          </div>
+
+        <!-- Action -->
+        <td class="px-5 py-3.5 text-right">
+          <button onclick="openLeadDrawer('${l.id}')" class="text-xs bg-[#181b20] hover:bg-white text-white hover:text-black font-semibold px-3 py-1.5 rounded-lg border border-white/10 transition-all shadow-sm">
+            <span>Pitch & Demo ↗</span>
+          </button>
         </td>
       </tr>
     `;
